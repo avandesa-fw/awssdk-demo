@@ -1,38 +1,31 @@
+mod configuration;
+mod logging;
+
 use aws_sdk_dynamodb::model::AttributeValue;
-use aws_sdk_dynamodb::{Client, Endpoint};
-use aws_types::region::Region;
+use aws_sdk_dynamodb::Client;
 use chrono::Utc;
 use color_eyre::eyre::{eyre, Result, WrapErr};
-use http::Uri;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use uuid::Uuid;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-        .init();
+    logging::init_tracing();
+
     // Pretty error printing
     color_eyre::install()?;
 
     // Load config
-    dotenv::dotenv().wrap_err("Failed to load environment")?;
-    tracing::info!("Loading AWS configuration");
-    let aws_config = aws_config::from_env()
-        .region(Region::new("us-east-1"))
-        .endpoint_resolver(Endpoint::immutable(Uri::from_static(
-            "http://localhost:4566",
-        )))
-        .load()
-        .await;
-    let dynamodb_config = aws_sdk_dynamodb::config::Builder::from(&aws_config).build();
-    let client = Client::from_conf(dynamodb_config);
+    let config = configuration::load_app_config().wrap_err("Failed to load app config")?;
+    let (_, dynamo_config) = configuration::load_aws_config(config.override_aws_endpoint)
+        .await
+        .wrap_err("Failed to load AWS config")?;
+
+    let dynamo_client = Client::from_conf(dynamo_config);
     tracing::info!("DynamoDB Client initialized");
 
-    list_tables(&client).await?;
-    send_sample_item(&client).await?;
+    list_tables(&dynamo_client).await?;
+    send_sample_item(&dynamo_client).await?;
 
     Ok(())
 }
