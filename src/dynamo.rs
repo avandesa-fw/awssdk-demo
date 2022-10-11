@@ -5,6 +5,7 @@ use color_eyre::eyre::{eyre, Result, WrapErr};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
+#[derive(Debug)]
 pub struct DynamoWrapper {
     table_name: String,
     client: Client,
@@ -18,7 +19,7 @@ impl DynamoWrapper {
         }
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all, fields(table_name = %self.table_name))]
     pub async fn send_batch_write(&self) -> Result<()> {
         let write_requests = std::iter::repeat_with(random_event)
             .take(10)
@@ -28,6 +29,7 @@ impl DynamoWrapper {
             .collect::<Vec<_>>();
 
         // Make BatchWriteItem, set `request_items` with table name as key
+        tracing::info!("Sending {} events", write_requests.len());
         self.client
             .batch_write_item()
             .request_items(&self.table_name, write_requests)
@@ -38,11 +40,12 @@ impl DynamoWrapper {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all, fields(table_name = %self.table_name))]
     pub async fn send_sample_item(&self) -> Result<()> {
         let project_id = Uuid::new_v4();
         let now = format!("{:.3}", (Utc::now().timestamp_millis() as f64) / 1000_f64);
 
+        tracing::info!("Sending sample event");
         self.client
             .put_item()
             .table_name(&self.table_name)
