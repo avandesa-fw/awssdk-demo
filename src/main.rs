@@ -1,6 +1,8 @@
 mod configuration;
 mod logging;
 
+use std::path::{Path, PathBuf};
+
 use aws_sdk_dynamodb::model::AttributeValue;
 use aws_sdk_dynamodb::Client;
 use chrono::Utc;
@@ -15,6 +17,12 @@ async fn main() -> Result<()> {
     // Pretty error printing
     color_eyre::install()?;
 
+    let events_file_path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "events.json".to_string());
+    let events_file_path = PathBuf::from(events_file_path);
+    let _events = load_events_file(&events_file_path).wrap_err("Failed to load events file")?;
+
     // Load config
     let config = configuration::load_app_config().wrap_err("Failed to load app config")?;
     let (_, dynamo_config) = configuration::load_aws_config(config.override_aws_endpoint)
@@ -28,6 +36,11 @@ async fn main() -> Result<()> {
     send_sample_item(&dynamo_client).await?;
 
     Ok(())
+}
+
+pub fn load_events_file(path: &Path) -> Result<serde_json::Value> {
+    let file = std::fs::File::open(path).wrap_err("Failed to open file")?;
+    serde_json::from_reader(file).wrap_err("Failed to parse JSON")
 }
 
 #[tracing::instrument(skip(client))]
