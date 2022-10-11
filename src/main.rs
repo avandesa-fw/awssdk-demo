@@ -1,13 +1,11 @@
+mod batch_write;
 mod configuration;
 mod logging;
 
 use std::path::{Path, PathBuf};
 
-use aws_sdk_dynamodb::model::AttributeValue;
 use aws_sdk_dynamodb::Client;
-use chrono::Utc;
 use color_eyre::eyre::{eyre, Result, WrapErr};
-use uuid::Uuid;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -33,12 +31,12 @@ async fn main() -> Result<()> {
     tracing::info!("DynamoDB Client initialized");
 
     list_tables(&dynamo_client).await?;
-    send_sample_item(&dynamo_client).await?;
+    batch_write::send_batch_write(&dynamo_client).await?;
 
     Ok(())
 }
 
-pub fn load_events_file(path: &Path) -> Result<serde_json::Value> {
+pub fn load_events_file(path: &Path) -> Result<Vec<serde_json::Value>> {
     let file = std::fs::File::open(path).wrap_err("Failed to open file")?;
     serde_json::from_reader(file).wrap_err("Failed to parse JSON")
 }
@@ -58,23 +56,6 @@ pub async fn list_tables(client: &Client) -> Result<()> {
     for table in table_names {
         println!("\t{}", table);
     }
-
-    Ok(())
-}
-
-#[tracing::instrument(skip(client))]
-pub async fn send_sample_item(client: &Client) -> Result<()> {
-    let project_id = Uuid::new_v4();
-    let now = format!("{:.3}", (Utc::now().timestamp_millis() as f64) / 1000_f64);
-
-    client
-        .put_item()
-        .table_name("AuditLog")
-        .item("ProjectId", AttributeValue::S(project_id.to_string()))
-        .item("EventTimestamp", AttributeValue::N(now))
-        .send()
-        .await
-        .wrap_err("Failed to put item")?;
 
     Ok(())
 }
