@@ -8,6 +8,7 @@ use serde::Deserialize;
 pub struct BridgeServiceConfig {
     /// Override for the AWS endpoint provider, used to point the service at LocalStack
     pub override_aws_endpoint: Option<String>,
+    pub dynamo_table_name: String,
 }
 
 pub struct MyAwsConfig {

@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
         .await
         .wrap_err("Failed to load AWS config")?;
 
-    let dynamo_client = dynamo::DynamoWrapper::new("AuditLog".to_string(), aws_config.dynamo);
+    let dynamo_client = dynamo::DynamoWrapper::new(config.dynamo_table_name, aws_config.dynamo);
     tracing::info!("DynamoDB Client initialized");
 
     dynamo_client.list_tables().await?;
