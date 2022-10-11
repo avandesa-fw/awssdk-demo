@@ -2,6 +2,8 @@ mod configuration;
 mod dynamo;
 mod logging;
 
+use configuration::{AwsConfig, BridgeServiceConfig};
+
 use std::path::{Path, PathBuf};
 
 use color_eyre::eyre::{Result, WrapErr};
@@ -21,8 +23,8 @@ async fn main() -> Result<()> {
     let _events = load_events_file(&events_file_path).wrap_err("Failed to load events file")?;
 
     // Load config
-    let config = configuration::load_app_config().wrap_err("Failed to load app config")?;
-    let aws_config = configuration::load_aws_config(config.override_aws_endpoint)
+    let config = BridgeServiceConfig::load().wrap_err("Failed to load app config")?;
+    let aws_config = AwsConfig::load(config.override_aws_endpoint)
         .await
         .wrap_err("Failed to load AWS config")?;
 
