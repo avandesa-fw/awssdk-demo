@@ -10,12 +10,16 @@ pub struct BridgeServiceConfig {
     pub override_aws_endpoint: Option<String>,
 }
 
+pub struct MyAwsConfig {
+    pub aws: AwsConfig,
+    pub dynamo: DynamoConfig,
+    // TODO: kinesis config
+}
+
 /// Load the AWS configuration from the environment, optionally overriding the endpoint for all
 /// services
 #[tracing::instrument(skip_all)]
-pub async fn load_aws_config(
-    override_aws_endpoint: Option<String>,
-) -> Result<(AwsConfig, DynamoConfig)> {
+pub async fn load_aws_config(override_aws_endpoint: Option<String>) -> Result<MyAwsConfig> {
     tracing::info!("Loading AWS config from environment");
     let mut aws_config = aws_config::from_env();
 
@@ -32,7 +36,10 @@ pub async fn load_aws_config(
     let aws_config = aws_config.load().await;
     let dynamodb_config = aws_sdk_dynamodb::config::Builder::from(&aws_config).build();
 
-    Ok((aws_config, dynamodb_config))
+    Ok(MyAwsConfig {
+        aws: aws_config,
+        dynamo: dynamodb_config,
+    })
 }
 
 /// Load settings for the service. It will take values from these sources in the following order:
