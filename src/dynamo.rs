@@ -30,12 +30,25 @@ impl DynamoWrapper {
 
         // Make BatchWriteItem, set `request_items` with table name as key
         tracing::info!("Sending {} events", write_requests.len());
-        self.client
+        let batch_result = self
+            .client
             .batch_write_item()
             .request_items(&self.table_name, write_requests)
             .send()
             .await
             .wrap_err("Failed to batch write")?;
+
+        match batch_result.unprocessed_items() {
+            Some(unprocessed_items) if !unprocessed_items.is_empty() => {
+                let table_count = unprocessed_items.len();
+                let item_count = unprocessed_items
+                    .values()
+                    .map(|items| items.len())
+                    .sum::<usize>();
+                tracing::warn!("Got {} unprocessed items from {} tables. Unprocessed items will be skipped for now!", item_count, table_count);
+            }
+            _ => {}
+        }
 
         Ok(())
     }
