@@ -1,5 +1,6 @@
 mod configuration;
 mod dynamo;
+mod kinesis;
 mod logging;
 
 use configuration::{AwsConfig, BridgeServiceConfig};
@@ -31,8 +32,30 @@ async fn main() -> Result<()> {
     let dynamo_client = dynamo::DynamoWrapper::new(config.dynamo_table_name, aws_config.dynamo);
     tracing::info!("DynamoDB Client initialized");
 
+    let kinesis_client =
+        kinesis::KinesisWrapper::new(config.kinesis_stream_name, aws_config.kinesis);
+    tracing::info!("Kinesis Client initialized");
+
     dynamo_client.list_tables().await?;
     dynamo_client.send_batch_write().await?;
+
+    let stream = kinesis_client
+        .describe_stream()
+        .await
+        .wrap_err("Failed to describe stream")?;
+    let first_shard_id = stream.shards().expect("at least one shard")[0]
+        .shard_id()
+        .expect("shard id");
+    let shard_iterator = kinesis_client
+        .get_shard_iterator(first_shard_id)
+        .await
+        .wrap_err("Failed to get shard iterator")?;
+    dbg!(&first_shard_id, &shard_iterator);
+
+    kinesis_client
+        .read_messages_forever(&shard_iterator)
+        .await
+        .wrap_err("Error reading messages forever")?;
 
     Ok(())
 }

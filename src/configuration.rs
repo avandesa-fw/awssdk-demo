@@ -1,4 +1,5 @@
 use aws_sdk_dynamodb::{Config as DynamoConfig, Endpoint};
+use aws_sdk_kinesis::Config as KinesisConfig;
 use aws_types::region::Region;
 use aws_types::SdkConfig;
 use color_eyre::eyre::{eyre, Result, WrapErr};
@@ -9,6 +10,7 @@ pub struct BridgeServiceConfig {
     /// Override for the AWS endpoint provider, used to point the service at LocalStack
     pub override_aws_endpoint: Option<String>,
     pub dynamo_table_name: String,
+    pub kinesis_stream_name: String,
 }
 
 impl BridgeServiceConfig {
@@ -54,7 +56,7 @@ impl BridgeServiceConfig {
 pub struct AwsConfig {
     pub aws: SdkConfig,
     pub dynamo: DynamoConfig,
-    // TODO: kinesis config
+    pub kinesis: KinesisConfig,
 }
 
 impl AwsConfig {
@@ -77,10 +79,12 @@ impl AwsConfig {
 
         let aws_config = aws_config.load().await;
         let dynamodb_config = aws_sdk_dynamodb::config::Builder::from(&aws_config).build();
+        let kinesis_config = aws_sdk_kinesis::config::Builder::from(&aws_config).build();
 
         Ok(AwsConfig {
             aws: aws_config,
             dynamo: dynamodb_config,
+            kinesis: kinesis_config,
         })
     }
 }
