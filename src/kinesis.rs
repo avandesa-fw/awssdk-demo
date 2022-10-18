@@ -1,3 +1,5 @@
+use crate::event::AuditEvent;
+
 use aws_sdk_kinesis::model::{ShardIteratorType, StreamDescription};
 use aws_sdk_kinesis::output::GetRecordsOutput;
 use aws_sdk_kinesis::{Client, Config};
@@ -48,17 +50,30 @@ impl KinesisWrapper {
             .shard_iterator(shard_iterator)
             .send()
             .await
+            .map_err(|e| dbg!(e))
             .wrap_err("Failed to get records")
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn read_messages_forever(&self, initial_shard_iterator: &str) -> Result<()> {
         let mut shard_iterator = initial_shard_iterator.to_string();
         loop {
             // Call GetRecords
             let resp = self.get_records(&shard_iterator).await?;
             for record in resp.records().unwrap() {
-                let data = String::from_utf8_lossy(record.data().unwrap().as_ref());
-                println!("{} | {}", record.partition_key().unwrap(), data);
+                match AuditEvent::try_from(record.data().unwrap()) {
+                    Ok(AuditEvent::ProjectEvent(event)) => {
+                        tracing::info!(project_id = %event.project_id, "Received project event")
+                    }
+                    Ok(AuditEvent::AccountEvent(event)) => {
+                        tracing::info!(account_id = event.account_id, "Received account event")
+                    }
+                    Err(err) => {
+                        let raw_message = String::from_utf8_lossy(record.data().unwrap().as_ref());
+                        // CLion may display an error on this line. You can ignore it, the code is correct.
+                        tracing::error!(%raw_message, "Error deserializing event: {}", err)
+                    }
+                }
             }
 
             // Update the iterator

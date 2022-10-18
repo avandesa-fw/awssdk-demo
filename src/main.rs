@@ -1,5 +1,6 @@
 mod configuration;
 mod dynamo;
+mod event;
 mod kinesis;
 mod logging;
 
