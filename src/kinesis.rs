@@ -1,4 +1,4 @@
-use crate::event::AuditEvent;
+use crate::event::Event;
 
 use aws_sdk_kinesis::model::{ShardIteratorType, StreamDescription};
 use aws_sdk_kinesis::output::GetRecordsOutput;
@@ -61,17 +61,17 @@ impl KinesisWrapper {
             // Call GetRecords
             let resp = self.get_records(&shard_iterator).await?;
             for record in resp.records().unwrap() {
-                match AuditEvent::try_from(record.data().unwrap()) {
-                    Ok(AuditEvent::ProjectEvent(event)) => {
+                match Event::try_from(record.data().unwrap()) {
+                    Ok(Event::Project(event)) => {
                         tracing::info!(project_id = %event.project_id, "Received project event")
                     }
-                    Ok(AuditEvent::AccountEvent(event)) => {
+                    Ok(Event::Account(event)) => {
                         tracing::info!(account_id = event.account_id, "Received account event")
                     }
                     Err(err) => {
                         let raw_message = String::from_utf8_lossy(record.data().unwrap().as_ref());
                         // CLion may display an error on this line. You can ignore it, the code is correct.
-                        tracing::error!(%raw_message, "Error deserializing event: {}", err)
+                        tracing::error!(%raw_message, "{}", err)
                     }
                 }
             }
