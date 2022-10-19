@@ -1,10 +1,12 @@
 use crate::event::Event;
 
-use aws_sdk_kinesis::model::{ShardIteratorType, StreamDescription};
+use aws_sdk_kinesis::model::{Record, ShardIteratorType, StreamDescription};
 use aws_sdk_kinesis::output::GetRecordsOutput;
 use aws_sdk_kinesis::{Client, Config};
 use color_eyre::eyre::{eyre, Result, WrapErr};
+use tokio::sync::mpsc::UnboundedSender;
 
+#[derive(Clone)]
 pub struct KinesisWrapper {
     stream_name: String,
     client: Client,
@@ -53,27 +55,39 @@ impl KinesisWrapper {
             .map_err(|e| dbg!(e))
             .wrap_err("Failed to get records")
     }
+}
+
+pub struct KinesisShardReader {
+    shard_id: String,
+    client: KinesisWrapper,
+    event_tx: UnboundedSender<Event>,
+}
+
+impl KinesisShardReader {
+    pub fn new(shard_id: String, client: KinesisWrapper, event_tx: UnboundedSender<Event>) -> Self {
+        Self {
+            shard_id,
+            client,
+            event_tx,
+        }
+    }
 
     #[tracing::instrument(skip_all)]
-    pub async fn read_messages_forever(&self, initial_shard_iterator: &str) -> Result<()> {
-        let mut shard_iterator = initial_shard_iterator.to_string();
+    pub async fn run_until_shard_closed(self) -> Result<()> {
+        // Obtain an initial shard iterator
+        let mut shard_iterator = self
+            .client
+            .get_shard_iterator(&self.shard_id)
+            .await
+            .wrap_err("Failed to obtain shard iterator")?;
+
         loop {
             // Call GetRecords
-            let resp = self.get_records(&shard_iterator).await?;
+            let resp = self.client.get_records(&shard_iterator).await?;
+
+            // Handle each record received
             for record in resp.records().unwrap() {
-                match Event::try_from(record.data().unwrap()) {
-                    Ok(Event::Project(event)) => {
-                        tracing::info!(project_id = %event.project_id, "Received project event")
-                    }
-                    Ok(Event::Account(event)) => {
-                        tracing::info!(account_id = event.account_id, "Received account event")
-                    }
-                    Err(err) => {
-                        let raw_message = String::from_utf8_lossy(record.data().unwrap().as_ref());
-                        // CLion may display an error on this line. You can ignore it, the code is correct.
-                        tracing::error!(%raw_message, "{}", err)
-                    }
-                }
+                self.handle_record(record).await?;
             }
 
             // Update the iterator
@@ -84,8 +98,44 @@ impl KinesisWrapper {
                 break;
             }
 
-            // Wait 200 ms
+            // Wait 200 ms (so as to not exceed the 5 transactions/second limit
+            // TODO: make this a config option
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(
+        skip(self, record),
+        fields(shard_id = self.shard_id, record_sequence_number = record.sequence_number()),
+    )]
+    async fn handle_record(&self, record: &Record) -> Result<()> {
+        tracing::debug!("Handling record");
+        match Event::try_from(record.data().unwrap()) {
+            Ok(event) => {
+                match &event {
+                    Event::Project(project_event) => {
+                        tracing::debug!(project_id = %project_event.project_id, "Received project event")
+                    }
+                    Event::Account(account_event) => {
+                        tracing::debug!(
+                            account_id = account_event.account_id,
+                            "Received account event"
+                        );
+                    }
+                }
+                // Send the parsed event over the channel for someone else to handle
+                self.event_tx
+                    .send(event)
+                    .wrap_err("Failed to send event over channel")?;
+            }
+            // Don't pass the error up. All we have is a malformed message, report it and move on
+            Err(err) => {
+                let raw_message = String::from_utf8_lossy(record.data().unwrap().as_ref());
+                // CLion may display an error on this line. You can ignore it, the code is correct.
+                tracing::error!(%raw_message, "{}", err);
+            }
         }
 
         Ok(())
