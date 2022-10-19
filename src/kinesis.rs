@@ -26,7 +26,7 @@ impl KinesisWrapper {
             .stream_name(&self.stream_name)
             .send()
             .await
-            .wrap_err("Failed to describe stream")?
+            .wrap_err("Failed to call `DescribeStream`")?
             .stream_description()
             .cloned()
             .ok_or_else(|| eyre!("No stream description"))
@@ -40,7 +40,7 @@ impl KinesisWrapper {
             .shard_iterator_type(ShardIteratorType::TrimHorizon)
             .send()
             .await
-            .wrap_err("Failed to get shard iterator")?
+            .wrap_err("Failed to call `GetShardIterator`")?
             .shard_iterator()
             .map(|i| i.to_string())
             .ok_or_else(|| eyre!("No shard iterator"))
@@ -52,8 +52,7 @@ impl KinesisWrapper {
             .shard_iterator(shard_iterator)
             .send()
             .await
-            .map_err(|e| dbg!(e))
-            .wrap_err("Failed to get records")
+            .wrap_err("Failed to call `GetRecords`")
     }
 }
 
