@@ -6,8 +6,6 @@ mod logging;
 
 use configuration::{AwsConfig, BridgeServiceConfig};
 
-use std::path::{Path, PathBuf};
-
 use crate::event::Event;
 use crate::kinesis::KinesisShardReader;
 use color_eyre::eyre::{Result, WrapErr};
@@ -20,12 +18,6 @@ async fn main() -> Result<()> {
 
     // Pretty error printing
     color_eyre::install()?;
-
-    let events_file_path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "events.json".to_string());
-    let events_file_path = PathBuf::from(events_file_path);
-    let _events = load_events_file(&events_file_path).wrap_err("Failed to load events file")?;
 
     // Load config
     let config = BridgeServiceConfig::load().wrap_err("Failed to load app config")?;
@@ -83,9 +75,4 @@ async fn receive_events(mut event_rx: UnboundedReceiver<Event>) {
     while let Some(event) = event_rx.recv().await {
         dbg!(&event);
     }
-}
-
-pub fn load_events_file(path: &Path) -> Result<Vec<serde_json::Value>> {
-    let file = std::fs::File::open(path).wrap_err("Failed to open file")?;
-    serde_json::from_reader(file).wrap_err("Failed to parse JSON")
 }
